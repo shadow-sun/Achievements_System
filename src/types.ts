@@ -6,7 +6,6 @@ export interface LearningTask {
   title: string
   details: string
   date: string
-  estimatedMinutes: number
   status: TaskStatus
   completedAt?: string
 }
@@ -17,9 +16,6 @@ export interface LearningPlan {
   source: string
   startDate: string
   deadline: string
-  dailyMinutes: number
-  sessionMinutes: number
-  restDays: number[]
   createdAt: string
 }
 
@@ -35,8 +31,6 @@ export interface AppData {
   plans: LearningPlan[]
   tasks: LearningTask[]
   achievements: Achievement[]
-  streak: number
-  lastActiveDate?: string
 }
 
 export interface DeepSeekSettings {
@@ -48,7 +42,6 @@ export interface DeepSeekSettings {
 export interface DraftTask {
   title: string
   details: string
-  estimatedMinutes: number
 }
 
 declare global {
@@ -59,7 +52,7 @@ declare global {
       showAchievement: (payload: { title: string; subtitle: string; kind?: string }) => Promise<void>
       loadSettings: () => Promise<DeepSeekSettings>
       saveSettings: (settings: { model: string; apiKey?: string }) => Promise<{ ok: boolean; hasApiKey: boolean }>
-      splitWithDeepSeek: (input: { title: string; source: string; dailyMinutes: number; sessionMinutes: number }) => Promise<DraftTask[]>
+      splitWithDeepSeek: (input: { title: string; source: string }) => Promise<DraftTask[]>
     }
   }
 }

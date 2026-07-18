@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { Award } from 'lucide-react'
 import './styles.css'
 
+document.documentElement.classList.add('popup-document')
+
 function playUnlockSound() {
   const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext
   const context = new AudioContextClass()
@@ -18,7 +20,7 @@ function playUnlockSound() {
   const noiseGain = context.createGain()
   noise.buffer = noiseBuffer
   filter.type = 'bandpass'; filter.frequency.setValueAtTime(1300, now); filter.Q.value = 0.7
-  noiseGain.gain.setValueAtTime(0.14, now); noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.32)
+  noiseGain.gain.setValueAtTime(0.28, now); noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.32)
   noise.connect(filter).connect(noiseGain).connect(context.destination)
   noise.start(now)
 
@@ -27,7 +29,7 @@ function playUnlockSound() {
     const gain = context.createGain()
     oscillator.type = 'sine'; oscillator.frequency.value = frequency
     const start = now + 0.12 + index * 0.065
-    gain.gain.setValueAtTime(0.001, start); gain.gain.exponentialRampToValueAtTime(0.12, start + 0.018); gain.gain.exponentialRampToValueAtTime(0.001, start + 0.5)
+    gain.gain.setValueAtTime(0.001, start); gain.gain.exponentialRampToValueAtTime(0.22, start + 0.018); gain.gain.exponentialRampToValueAtTime(0.001, start + 0.5)
     oscillator.connect(gain).connect(context.destination); oscillator.start(start); oscillator.stop(start + 0.52)
   })
 }

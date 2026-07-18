@@ -30,6 +30,7 @@ function createMainWindow() {
     minWidth: 1080,
     minHeight: 700,
     backgroundColor: '#090b0e',
+    title: '汉广',
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#090b0e', symbolColor: '#8e959f', height: 42 },
     webPreferences: {
@@ -46,14 +47,18 @@ function createMainWindow() {
 function showAchievement(payload) {
   if (achievementWindow && !achievementWindow.isDestroyed()) achievementWindow.close()
 
+  const width = 420
+  const height = 126
   const { workArea } = screen.getPrimaryDisplay()
   achievementWindow = new BrowserWindow({
-    width: 430,
-    height: 154,
-    x: workArea.x + workArea.width - 454,
-    y: workArea.y + workArea.height - 178,
+    width,
+    height,
+    x: workArea.x + workArea.width - width - 24,
+    y: workArea.y + workArea.height - height - 24,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',
+    hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
@@ -120,11 +125,11 @@ ipcMain.handle('deepseek:split', async (_event, input) => {
       messages: [
         {
           role: 'system',
-          content: '你是一名专业学习规划师。把计划拆成由易到难、可以在单次专注中完成的原子任务。只输出 JSON：{\"tasks\":[{\"title\":\"\",\"details\":\"\",\"estimatedMinutes\":45}]}。每项 15-120 分钟，标题具体且可验收，不要添加用户没有要求的学习内容。',
+          content: '你是一名专业学习规划师。把 Markdown 计划书拆成由易到难、边界清楚、可以独立确认完成的原子任务。只输出 JSON：{"tasks":[{"title":"","details":""}]}。标题必须具体且可验收，不估算时间，不添加用户没有要求的学习内容。',
         },
         {
           role: 'user',
-          content: `计划名称：${input.title}\n每日可用：${input.dailyMinutes} 分钟\n单次专注：${input.sessionMinutes} 分钟\n原始任务书：\n${input.source}`,
+          content: `计划名称：${input.title}\nMarkdown 任务书：\n${input.source}`,
         },
       ],
     }),
