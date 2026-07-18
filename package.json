@@ -2,15 +2,19 @@
   "name": "achievements",
   "version": "0.1.0",
   "private": true,
+  "productName": "汉广",
   "description": "汉广：一款任务导向的自学计划与成就反馈应用。",
+  "author": "汉广",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 node scripts/run-electron.cjs\"",
     "build": "tsc -b && vite build",
     "start": "node scripts/run-electron.cjs",
+    "dist:win": "npm run build && electron-builder --win portable --x64",
     "preview": "vite preview"
   },
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",
     "react": "latest",
@@ -18,15 +22,42 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "typescript": "latest",
-    "vite": "latest"
-  },
-  "devDependencies": {
+    "vite": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "concurrently": "latest",
     "cross-env": "latest",
     "electron": "latest",
+    "electron-builder": "^26.15.3",
     "wait-on": "latest"
+  },
+  "build": {
+    "appId": "com.hanguang.selflearning",
+    "productName": "汉广",
+    "asar": true,
+    "npmRebuild": false,
+    "compression": "normal",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "executableName": "汉广",
+      "artifactName": "汉广.exe",
+      "signAndEditExecutable": false
+    }
   }
 }
