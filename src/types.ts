@@ -37,6 +37,7 @@ export interface DeepSeekSettings {
   endpoint: string
   model: string
   hasApiKey: boolean
+  apiKeyHint: string
 }
 
 export interface DraftTask {
@@ -51,7 +52,7 @@ declare global {
       saveData: (data: AppData) => Promise<void>
       showAchievement: (payload: { title: string; subtitle: string; kind?: string }) => Promise<void>
       loadSettings: () => Promise<DeepSeekSettings>
-      saveSettings: (settings: { model: string; apiKey?: string }) => Promise<{ ok: boolean; hasApiKey: boolean }>
+      saveSettings: (settings: { model: string; apiKey?: string }) => Promise<{ ok: boolean; hasApiKey: boolean; apiKeyHint: string }>
       splitWithDeepSeek: (input: { title: string; source: string }) => Promise<DraftTask[]>
     }
   }

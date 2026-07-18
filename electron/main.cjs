@@ -88,10 +88,20 @@ ipcMain.handle('settings:load', async () => {
     endpoint: 'https://api.deepseek.com/chat/completions',
     model: 'deepseek-chat',
   })
+  let apiKeyHint = settings.apiKeyHint || ''
+  if (!apiKeyHint && settings.encryptedApiKey && safeStorage.isEncryptionAvailable()) {
+    try {
+      const currentKey = safeStorage.decryptString(Buffer.from(settings.encryptedApiKey, 'base64'))
+      apiKeyHint = `${currentKey.slice(0, 3)}••••••${currentKey.slice(-4)}`
+    } catch {
+      apiKeyHint = '已安全保存'
+    }
+  }
   return {
     endpoint: settings.endpoint,
     model: settings.model,
     hasApiKey: Boolean(settings.encryptedApiKey),
+    apiKeyHint,
   }
 })
 
@@ -101,13 +111,15 @@ ipcMain.handle('settings:save', async (_event, input) => {
     endpoint: 'https://api.deepseek.com/chat/completions',
     model: input.model || 'deepseek-chat',
     encryptedApiKey: current.encryptedApiKey,
+    apiKeyHint: current.apiKeyHint || '',
   }
   if (input.apiKey) {
     if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统无法安全保存 API Key')
     next.encryptedApiKey = safeStorage.encryptString(input.apiKey).toString('base64')
+    next.apiKeyHint = `${input.apiKey.slice(0, 3)}••••••${input.apiKey.slice(-4)}`
   }
   await writeJson('settings.json', next)
-  return { ok: true, hasApiKey: Boolean(next.encryptedApiKey) }
+  return { ok: true, hasApiKey: Boolean(next.encryptedApiKey), apiKeyHint: next.apiKeyHint }
 })
 
 ipcMain.handle('deepseek:split', async (_event, input) => {
