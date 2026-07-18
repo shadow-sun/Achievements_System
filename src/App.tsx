@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   Award, BookOpen, BrainCircuit, Check, ChevronRight, FileText, LayoutDashboard,
   Medal, Plus, RefreshCcw, Settings, Sparkles, Target, Trash2, Upload, X,
@@ -275,7 +277,7 @@ function TaskDetailModal({ task, plan, onClose, onComplete }: { task: LearningTa
     <div className="detail-body"><div className="detail-meta"><div><span>所属计划</span><strong>{plan?.title || '未知计划'}</strong></div><div><span>执行日期</span><strong>{formatShortDate(task.date)}</strong></div><div><span>当前状态</span><strong className={task.status === 'completed' ? 'status-completed' : ''}>{task.status === 'completed' ? '已完成' : '待完成'}</strong></div></div>
       <section className="detail-section"><span className="eyebrow">任务说明</span><p>{task.details || '计划书中未提供额外说明。'}</p></section>
       {task.completedAt && <section className="detail-section"><span className="eyebrow">完成时间</span><p>{new Date(task.completedAt).toLocaleString('zh-CN')}</p></section>}
-    </div><div className="modal-actions"><button className="ghost-button" onClick={onClose}>关闭</button>{task.status === 'pending' && <button className="primary-button" onClick={onComplete}><Check size={17} />确认完成</button>}</div>
+    </div>{task.status === 'pending' && <div className="modal-actions"><button className="primary-button" onClick={onComplete}><Check size={17} />确认完成</button></div>}
   </div></div>
 }
 
@@ -285,7 +287,10 @@ function PlanDetailModal({ plan, tasks, onClose, onDelete }: { plan: LearningPla
   return <div className="modal-backdrop center"><div className="dialog detail-dialog plan-detail-dialog"><div className="modal-head"><div><span className="eyebrow">PLAN DETAILS</span><h2>{plan.title}</h2></div><button className="icon-button" onClick={onClose}><X /></button></div>
     <div className="detail-body"><div className="detail-meta"><div><span>计划周期</span><strong>{formatShortDate(plan.startDate)} — {formatShortDate(plan.deadline)}</strong></div><div><span>任务进度</span><strong>{completed} / {tasks.length} 项</strong></div><div><span>完成比例</span><strong>{rate}%</strong></div></div>
       <div className="progress detail-progress"><i style={{ width: `${rate}%` }} /></div>
-      <section className="detail-section"><span className="eyebrow">原始计划书</span><pre>{plan.source}</pre></section>
+      <section className="detail-section"><span className="eyebrow">计划书</span><div className="markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+        a: ({ children }) => <span className="markdown-link">{children}</span>,
+        img: ({ alt }) => <span className="markdown-image">[图片：{alt || '未命名'}]</span>,
+      }}>{plan.source}</ReactMarkdown></div></section>
       <section className="detail-section"><span className="eyebrow">任务清单</span><div className="detail-task-list">{tasks.map((task) => <div key={task.id} className={task.status === 'completed' ? 'detail-task done' : 'detail-task'}><span>{formatShortDate(task.date)}</span><strong>{task.title}</strong><i>{task.status === 'completed' ? '已完成' : '待完成'}</i></div>)}</div></section>
     </div><div className="modal-actions between"><button className="danger-link" onClick={onDelete}><Trash2 size={16} />删除计划</button><button className="ghost-button" onClick={onClose}>关闭</button></div>
   </div></div>
