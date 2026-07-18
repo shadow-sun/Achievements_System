@@ -153,8 +153,6 @@ label small { color: #626a72; font-size: 10px; line-height: 1.6; }
 .markdown-body table { width: 100%; border-collapse: collapse; margin: 1em 0; }.markdown-body th, .markdown-body td { padding: 7px 9px; border: 1px solid #30373d; text-align: left; }.markdown-body th { color: #d8d8d2; background: #15191d; }
 .markdown-body input[type='checkbox'] { width: auto; accent-color: var(--accent); }.markdown-body .contains-task-list { padding-left: .5em; list-style: none; }
 .markdown-link { color: #c8aa68; text-decoration: underline; text-decoration-style: dotted; }.markdown-image { display: inline-block; padding: 5px 8px; border: 1px dashed #3c4349; color: #737c83; font-size: 10px; }
-.modal-actions.between { justify-content: space-between; }
-.danger-link { display: inline-flex; align-items: center; gap: 7px; border: 0; color: #b96c63; background: transparent; cursor: pointer; font-size: 11px; }.danger-link:hover { color: #df8c82; }
 .toast { position: fixed; z-index: 100; left: 50%; bottom: 27px; display: flex; align-items: center; gap: 9px; padding: 11px 16px; border: 1px solid #4e4734; color: #e4d19d; background: #171714; box-shadow: 0 12px 35px rgba(0,0,0,.4); transform: translateX(-50%); font-size: 11px; animation: toastIn .25s ease; }
 .loading-screen { height: 100vh; display: flex; align-items: center; justify-content: center; gap: 12px; color: #8b9298; background: var(--bg); font-size: 12px; }.loading-screen svg { color: var(--accent); animation: spin 2s linear infinite; }
 

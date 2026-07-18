@@ -134,7 +134,7 @@ export default function App() {
       {confirmTask && <ConfirmModal task={confirmTask} onCancel={() => setConfirmTask(null)} onConfirm={completeTask} />}
       {deletePlan && <DeletePlanModal plan={deletePlan} onCancel={() => setDeletePlan(null)} onConfirm={removePlan} />}
       {detailTask && <TaskDetailModal task={detailTask} plan={data.plans.find((plan) => plan.id === detailTask.planId)} onClose={() => setDetailTask(null)} onComplete={() => { setDetailTask(null); setConfirmTask(detailTask) }} />}
-      {detailPlan && <PlanDetailModal plan={detailPlan} tasks={data.tasks.filter((task) => task.planId === detailPlan.id)} onClose={() => setDetailPlan(null)} onDelete={() => { setDetailPlan(null); setDeletePlan(detailPlan) }} />}
+      {detailPlan && <PlanDetailModal plan={detailPlan} tasks={data.tasks.filter((task) => task.planId === detailPlan.id)} onClose={() => setDetailPlan(null)} />}
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
   )
@@ -281,7 +281,7 @@ function TaskDetailModal({ task, plan, onClose, onComplete }: { task: LearningTa
   </div></div>
 }
 
-function PlanDetailModal({ plan, tasks, onClose, onDelete }: { plan: LearningPlan; tasks: LearningTask[]; onClose: () => void; onDelete: () => void }) {
+function PlanDetailModal({ plan, tasks, onClose }: { plan: LearningPlan; tasks: LearningTask[]; onClose: () => void }) {
   const completed = tasks.filter((task) => task.status === 'completed').length
   const rate = tasks.length ? Math.round(completed / tasks.length * 100) : 0
   return <div className="modal-backdrop center"><div className="dialog detail-dialog plan-detail-dialog"><div className="modal-head"><div><span className="eyebrow">PLAN DETAILS</span><h2>{plan.title}</h2></div><button className="icon-button" onClick={onClose}><X /></button></div>
@@ -292,7 +292,7 @@ function PlanDetailModal({ plan, tasks, onClose, onDelete }: { plan: LearningPla
         img: ({ alt }) => <span className="markdown-image">[图片：{alt || '未命名'}]</span>,
       }}>{plan.source}</ReactMarkdown></div></section>
       <section className="detail-section"><span className="eyebrow">任务清单</span><div className="detail-task-list">{tasks.map((task) => <div key={task.id} className={task.status === 'completed' ? 'detail-task done' : 'detail-task'}><span>{formatShortDate(task.date)}</span><strong>{task.title}</strong><i>{task.status === 'completed' ? '已完成' : '待完成'}</i></div>)}</div></section>
-    </div><div className="modal-actions between"><button className="danger-link" onClick={onDelete}><Trash2 size={16} />删除计划</button><button className="ghost-button" onClick={onClose}>关闭</button></div>
+    </div>
   </div></div>
 }
 
