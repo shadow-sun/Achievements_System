@@ -43,6 +43,7 @@ export interface DeepSeekSettings {
 export interface DraftTask {
   title: string
   details: string
+  date?: string
 }
 
 declare global {
@@ -53,7 +54,7 @@ declare global {
       showAchievement: (payload: { title: string; subtitle: string; kind?: string }) => Promise<void>
       loadSettings: () => Promise<DeepSeekSettings>
       saveSettings: (settings: { model: string; apiKey?: string }) => Promise<{ ok: boolean; hasApiKey: boolean; apiKeyHint: string }>
-      splitWithDeepSeek: (input: { title: string; source: string }) => Promise<DraftTask[]>
+      splitWithDeepSeek: (input: { title: string; source: string; importDate: string }) => Promise<DraftTask[]>
     }
   }
 }

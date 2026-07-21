@@ -6,7 +6,7 @@ import {
   Medal, Plus, RefreshCcw, Settings, Sparkles, Target, Trash2, Upload, X,
 } from 'lucide-react'
 import type { AppData, DeepSeekSettings, LearningPlan, LearningTask } from './types'
-import { formatShortDate, reschedulePending, scheduleDrafts, splitLocally, todayKey } from './planner'
+import { derivePlanSchedule, formatShortDate, reschedulePending, scheduleDrafts, splitLocally, todayKey } from './planner'
 
 const EMPTY_DATA: AppData = { plans: [], tasks: [], achievements: [] }
 
@@ -37,7 +37,11 @@ export default function App() {
   useEffect(() => {
     const load = async () => {
       const stored = window.achievements ? await window.achievements.loadData() : loadBrowserData()
-      setData(stored || EMPTY_DATA)
+      const loaded = stored || EMPTY_DATA
+      setData({
+        ...loaded,
+        tasks: reschedulePending(loaded.tasks, loaded.plans),
+      })
       setReady(true)
     }
     void load()
@@ -95,8 +99,8 @@ export default function App() {
   }
 
   const adaptSchedule = () => {
-    setData((current) => ({ ...current, tasks: reschedulePending(current.tasks, current.plans) }))
-    notify('已按剩余任务数量重新分配每日任务')
+    setData((current) => ({ ...current, tasks: reschedulePending(current.tasks, current.plans, true) }))
+    notify('已更新今日任务；全部完成时会载入下一批任务')
   }
 
   if (!ready) return <div className="loading-screen"><Sparkles size={24} />正在整理你的学习进度…</div>
@@ -128,7 +132,7 @@ export default function App() {
 
       {showCreate && <CreatePlanModal onClose={() => setShowCreate(false)} onCreated={(plan, tasks) => {
         setData((current) => ({ ...current, plans: [...current.plans, plan], tasks: [...current.tasks, ...tasks] }))
-        setShowCreate(false); setPage('plans'); notify(`“${plan.title}”已拆分为 ${tasks.length} 项任务`)
+        setShowCreate(false); setPage('today'); notify(`“${plan.title}”的 ${tasks.length} 项任务已全部导入`)
       }} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} onSaved={() => notify('DeepSeek 配置已安全保存')} />}
       {confirmTask && <ConfirmModal task={confirmTask} onCancel={() => setConfirmTask(null)} onConfirm={completeTask} />}
@@ -153,7 +157,7 @@ function TodayPage({ tasks, plans, completionRate, onComplete, onOpen, onCreate,
       <div className="stat-card"><div className="stat-icon"><Check /></div><span>今日任务</span><strong>{doneCount}<small> / {tasks.length} 项</small></strong><p>每完成一项，都由你亲自确认</p></div>
     </section>
     <section className="section-block">
-      <div className="section-title"><div><span className="eyebrow">TODAY'S QUESTS</span><h2>今日任务</h2></div><button className="ghost-button" onClick={onAdapt}><RefreshCcw size={16} />自适应重排</button></div>
+      <div className="section-title"><div><span className="eyebrow">TODAY'S QUESTS</span><h2>今日任务</h2></div><button className="ghost-button" onClick={onAdapt}><RefreshCcw size={16} />更新</button></div>
       {tasks.length === 0 ? <EmptyState onCreate={onCreate} /> : <div className="task-list">{tasks.map((task, index) => {
         const plan = plans.find((item) => item.id === task.planId)
         return <article className={task.status === 'completed' ? 'task-row completed clickable' : 'task-row clickable'} key={task.id} onClick={() => onOpen(task)}>
@@ -200,13 +204,9 @@ function AchievementsPage({ data }: { data: AppData }) {
 }
 
 function CreatePlanModal({ onClose, onCreated }: { onClose: () => void; onCreated: (plan: LearningPlan, tasks: LearningTask[]) => void }) {
-  const today = todayKey()
-  const later = new Date(); later.setDate(later.getDate() + 30)
   const [title, setTitle] = useState('')
   const [source, setSource] = useState('')
   const [fileName, setFileName] = useState('')
-  const [startDate, setStartDate] = useState(today)
-  const [deadline, setDeadline] = useState(dateInputValue(later))
   const [useAi, setUseAi] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -222,13 +222,14 @@ function CreatePlanModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
   const create = async () => {
     if (!source.trim()) { setError('请先选择 Markdown 计划书'); return }
-    if (deadline < startDate) { setError('截止日期不能早于开始日期'); return }
     setBusy(true); setError('')
     try {
+      const importDate = todayKey()
       const drafts = useAi && window.achievements
-        ? await window.achievements.splitWithDeepSeek({ title, source })
+        ? await window.achievements.splitWithDeepSeek({ title, source, importDate })
         : splitLocally(source)
       if (!drafts.length) throw new Error('计划书中没有识别到任务，请使用 Markdown 列表编写任务项')
+      const { startDate, deadline } = derivePlanSchedule(source, drafts, importDate)
       const plan: LearningPlan = { id: crypto.randomUUID(), title, source, startDate, deadline, createdAt: new Date().toISOString() }
       onCreated(plan, scheduleDrafts(drafts, plan))
     } catch (cause) { setError(cause instanceof Error ? cause.message : '创建计划失败') }
@@ -239,7 +240,7 @@ function CreatePlanModal({ onClose, onCreated }: { onClose: () => void; onCreate
     <div className="form-body">
       <label className={fileName ? 'upload-box file-selected' : 'upload-box'}><Upload /><div><span>{fileName || '选择 Markdown 计划书'}</span><small>{fileName ? '点击可重新选择文件' : '仅支持 .md 文件，计划名取自文件名'}</small></div><input type="file" accept=".md,text/markdown" onChange={(event) => void importFile(event.target.files?.[0])} /></label>
       {fileName && <div className="imported-file"><FileText /><div><strong>{title}</strong><span>{source.split(/\r?\n/).length} 行内容已读取</span></div><Check /></div>}
-      <div className="form-grid"><label>开始日期<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label>目标日期<input type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} /></label></div>
+      <div className="schedule-note">任务日期从计划书中自动读取；未写明开始日期时，以导入当天为准。</div>
       <button className={useAi ? 'ai-toggle selected' : 'ai-toggle'} onClick={() => setUseAi(!useAi)}><BrainCircuit /><div><strong>使用 DeepSeek 智能拆分</strong><span>理解任务依赖，优化任务边界与描述；需先配置 API Key</span></div><i>{useAi ? '已开启' : '本地模式'}</i></button>
       {error && <div className="form-error">{error}</div>}
     </div><div className="modal-actions"><button className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" disabled={busy} onClick={() => void create()}>{busy ? '正在拆分…' : <><Sparkles size={17} />生成每日任务</>}</button></div>
@@ -294,8 +295,4 @@ function PlanDetailModal({ plan, tasks, onClose }: { plan: LearningPlan; tasks: 
       <section className="detail-section"><span className="eyebrow">任务清单</span><div className="detail-task-list">{tasks.map((task) => <div key={task.id} className={task.status === 'completed' ? 'detail-task done' : 'detail-task'}><span>{formatShortDate(task.date)}</span><strong>{task.title}</strong><i>{task.status === 'completed' ? '已完成' : '待完成'}</i></div>)}</div></section>
     </div>
   </div></div>
-}
-
-function dateInputValue(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }

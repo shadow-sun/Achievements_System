@@ -137,11 +137,11 @@ ipcMain.handle('deepseek:split', async (_event, input) => {
       messages: [
         {
           role: 'system',
-          content: '你是一名专业学习规划师。把 Markdown 计划书拆成由易到难、边界清楚、可以独立确认完成的原子任务。只输出 JSON：{"tasks":[{"title":"","details":""}]}。标题必须具体且可验收，不估算时间，不添加用户没有要求的学习内容。',
+          content: '你是一名专业学习规划师。完整读取 Markdown 计划书，把其中全部事项拆成边界清楚、可以独立确认完成的原子任务，并保留计划书的日期安排。只输出 JSON：{"tasks":[{"title":"","details":"","date":"YYYY-MM-DD"}]}。每项任务必须有 date；同一天有多项任务时全部分别输出，不得遗漏或合并。优先采用计划书明确写出的任务日期，并根据给定导入日期换算“第几天”等相对日期；仅有起止范围时在范围内按原有顺序合理分配。计划书没有任何日期时，以导入日期作为开始日期。标题必须具体且可验收，不估算专注时间，不添加计划书没有要求的学习内容。',
         },
         {
           role: 'user',
-          content: `计划名称：${input.title}\nMarkdown 任务书：\n${input.source}`,
+          content: `计划名称：${input.title}\n导入日期：${input.importDate}\nMarkdown 任务书：\n${input.source}`,
         },
       ],
     }),
@@ -156,7 +156,11 @@ ipcMain.handle('deepseek:split', async (_event, input) => {
   if (!content) throw new Error('DeepSeek 未返回可用内容')
   const parsed = JSON.parse(content.replace(/^```json\s*|\s*```$/g, ''))
   if (!Array.isArray(parsed.tasks)) throw new Error('DeepSeek 返回的数据格式不正确')
-  return parsed.tasks
+  return parsed.tasks.map((task) => ({
+    title: String(task.title || '').trim(),
+    details: String(task.details || task.title || '').trim(),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(task.date) ? task.date : input.importDate,
+  })).filter((task) => task.title)
 })
 
 app.whenReady().then(() => {
