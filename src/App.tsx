@@ -5,7 +5,7 @@ import {
   Award, BookOpen, BrainCircuit, Check, ChevronRight, FileText, LayoutDashboard,
   Medal, Plus, RefreshCcw, Settings, Sparkles, Target, Trash2, Upload, X,
 } from 'lucide-react'
-import type { AppData, DeepSeekSettings, LearningPlan, LearningTask } from './types'
+import type { AppData, DeepSeekSettings, DraftTask, LearningPlan, LearningTask } from './types'
 import { derivePlanSchedule, formatShortDate, reschedulePending, scheduleDrafts, splitLocally, todayKey, updatePendingSchedule } from './planner'
 
 const EMPTY_DATA: AppData = { plans: [], tasks: [], achievements: [] }
@@ -226,18 +226,26 @@ function CreatePlanModal({ onClose, onCreated }: { onClose: () => void; onCreate
     try {
       const importDate = todayKey()
       const inferredSchedule = derivePlanSchedule(source, [], importDate)
-      const drafts = useAi && window.achievements
-        ? await window.achievements.splitWithDeepSeek({
+      let drafts: DraftTask[]
+      let schedule = inferredSchedule
+      let normalizedSource: string | undefined
+      if (useAi && window.achievements) {
+        const result = await window.achievements.splitWithDeepSeek({
           title,
           source,
           importDate,
           planStartDate: inferredSchedule.startDate,
           planDeadline: inferredSchedule.deadline,
         })
-        : splitLocally(source)
+        drafts = result.tasks
+        schedule = { startDate: result.startDate, deadline: result.deadline }
+        normalizedSource = result.normalizedPlan
+      } else {
+        drafts = splitLocally(source)
+        schedule = derivePlanSchedule(source, drafts, importDate)
+      }
       if (!drafts.length) throw new Error('计划书中没有识别到任务，请使用 Markdown 列表编写任务项')
-      const { startDate, deadline } = derivePlanSchedule(source, drafts, importDate)
-      const plan: LearningPlan = { id: crypto.randomUUID(), title, source, startDate, deadline, createdAt: new Date().toISOString() }
+      const plan: LearningPlan = { id: crypto.randomUUID(), title, source, normalizedSource, ...schedule, createdAt: new Date().toISOString() }
       onCreated(plan, scheduleDrafts(drafts, plan))
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : '创建计划失败'
@@ -250,10 +258,10 @@ function CreatePlanModal({ onClose, onCreated }: { onClose: () => void; onCreate
     <div className="form-body">
       <label className={fileName ? 'upload-box file-selected' : 'upload-box'}><Upload /><div><span>{fileName || '选择 Markdown 计划书'}</span><small>{fileName ? '点击可重新选择文件' : '仅支持 .md 文件，计划名取自文件名'}</small></div><input type="file" accept=".md,text/markdown" onChange={(event) => void importFile(event.target.files?.[0])} /></label>
       {fileName && <div className="imported-file"><FileText /><div><strong>{title}</strong><span>{source.split(/\r?\n/).length} 行内容已读取</span></div><Check /></div>}
-      <div className="schedule-note">任务日期从计划书中自动读取；未写明开始日期时，以导入当天为准。</div>
-      <button className={useAi ? 'ai-toggle selected' : 'ai-toggle'} onClick={() => setUseAi(!useAi)}><BrainCircuit /><div><strong>使用 DeepSeek 智能拆分</strong><span>理解任务依赖，优化任务边界与描述；需先配置 API Key</span></div><i>{useAi ? '已开启' : '本地模式'}</i></button>
+      <div className="schedule-note">先统一周次、日期范围和 Day 编号，再按绝对日期拆分每日任务。</div>
+      <button className={useAi ? 'ai-toggle selected' : 'ai-toggle'} onClick={() => setUseAi(!useAi)}><BrainCircuit /><div><strong>使用 DeepSeek 统一并拆分</strong><span>适配灵活格式，统一结果可在计划详情中核对；需先配置 API Key</span></div><i>{useAi ? '已开启' : '本地模式'}</i></button>
       {error && <div className="form-error">{error}</div>}
-    </div><div className="modal-actions"><button className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" disabled={busy} onClick={() => void create()}>{busy ? '正在拆分…' : <><Sparkles size={17} />生成每日任务</>}</button></div>
+    </div><div className="modal-actions"><button className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" disabled={busy} onClick={() => void create()}>{busy ? '正在统一并拆分…' : <><Sparkles size={17} />生成每日任务</>}</button></div>
   </div></div>
 }
 
@@ -299,7 +307,8 @@ function PlanDetailModal({ plan, tasks, onClose }: { plan: LearningPlan; tasks: 
   return <div className="modal-backdrop center"><div className="dialog detail-dialog plan-detail-dialog"><div className="modal-head"><div><span className="eyebrow">PLAN DETAILS</span><h2>{plan.title}</h2></div><button className="icon-button" onClick={onClose}><X /></button></div>
     <div className="detail-body"><div className="detail-meta"><div><span>计划周期</span><strong>{formatShortDate(plan.startDate)} — {formatShortDate(plan.deadline)}</strong></div><div><span>任务进度</span><strong>{completed} / {tasks.length} 项</strong></div><div><span>完成比例</span><strong>{rate}%</strong></div></div>
       <div className="progress detail-progress"><i style={{ width: `${rate}%` }} /></div>
-      <section className="detail-section"><span className="eyebrow">计划书</span><div className="markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+      {plan.normalizedSource && <section className="detail-section"><span className="eyebrow">统一后的每日计划</span><div className="markdown-body normalized-plan"><ReactMarkdown remarkPlugins={[remarkGfm]}>{plan.normalizedSource}</ReactMarkdown></div></section>}
+      <section className="detail-section"><span className="eyebrow">原始计划书</span><div className="markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{
         a: ({ children }) => <span className="markdown-link">{children}</span>,
         img: ({ alt }) => <span className="markdown-image">[图片：{alt || '未命名'}]</span>,
       }}>{plan.source}</ReactMarkdown></div></section>

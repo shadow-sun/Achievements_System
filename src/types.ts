@@ -14,6 +14,7 @@ export interface LearningPlan {
   id: string
   title: string
   source: string
+  normalizedSource?: string
   startDate: string
   deadline: string
   createdAt: string
@@ -47,6 +48,13 @@ export interface DraftTask {
   date?: string
 }
 
+export interface DeepSeekSplitResult {
+  tasks: DraftTask[]
+  startDate: string
+  deadline: string
+  normalizedPlan: string
+}
+
 declare global {
   interface Window {
     achievements?: {
@@ -61,7 +69,7 @@ declare global {
         importDate: string
         planStartDate: string
         planDeadline: string
-      }) => Promise<DraftTask[]>
+      }) => Promise<DeepSeekSplitResult>
     }
   }
 }

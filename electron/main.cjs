@@ -6,70 +6,69 @@ const isDev = Boolean(process.env.VITE_DEV_SERVER_URL)
 let mainWindow
 let achievementWindow
 
-const DEEPSEEK_SYSTEM_PROMPT = `你是一名专业学习规划师。请从给定的 Markdown 计划片段中提取全部可执行任务，并保留计划书的日期安排。
+const DEEPSEEK_NORMALIZE_PROMPT = `你是一名专业学习计划编辑。请先把任意格式的 Markdown 计划书统一成按绝对日期排列的每日计划。
 
-输出格式只能是 JSON：{"tasks":[{"title":"","details":"","day":1,"date":"YYYY-MM-DD"}]}。
+输出格式只能是 JSON：{"startDate":"YYYY-MM-DD","deadline":"YYYY-MM-DD","days":[{"date":"YYYY-MM-DD","label":"","requirements":[""]}]}。
 
 规则：
-1. 日期标题或 Day N 下有多项待办时，每项分别输出，不得遗漏或合并。
-2. Day N 标题下的每项任务都必须原样填写对应的 day 数字；Day 1 等于计划开始日期，最终日期由本地程序计算。
-3. 优先采用计划书明确写出的日期；没有任务日期时，才在计划起止日期内按原顺序安排。
-4. 只提取实际执行清单、明确产出和验收任务；不要把背景介绍、技术选型、参考资料、风险说明、模板、可选项或“不做”事项创建为任务。
-5. title 必须具体且可验收，details 简洁保留必要上下文；不估算专注时间，不添加计划书未要求的内容。`
+1. 先理解周次、阶段、日期表、日期范围、Day N 和自然语言日程，再换算为绝对日期；每周重新从 Day 1 编号时，必须结合所属周次计算，不能当作全局 Day 1。
+2. startDate 是实际执行计划的第一天，deadline 是计划最后一天；准备期、冻结期和其他项目日期不能误作本计划周期。
+3. 每个有明确执行内容的日期输出一个 days 项；同一天的全部要求放入 requirements，不得遗漏。没有逐日安排但有明确周范围时，可按原有优先级在该周内合理分配。
+4. requirements 只保留实际执行、产出、测试和验收要求；忽略背景介绍、参考资料、时间投入、娱乐睡眠、风险解释、示例、模板、“不做”事项和重复的总目标。
+5. 不得添加计划书未要求的工作。label 简短说明当天主题，每条 requirement 保留验收边界但措辞简洁。`
 
-const DEEPSEEK_PROMPT_VIEW = `${DEEPSEEK_SYSTEM_PROMPT}
+const DEEPSEEK_SPLIT_PROMPT = `你是一名专业学习任务编辑。输入已经是统一后的每日计划，请把每天的 requirements 拆成边界清楚、可以独立确认完成的任务。
 
-每批请求还会附加：计划名称、导入日期、本地识别的计划起止日期、当前批次编号，以及对应的 Markdown 计划片段。包含 Day N 的长计划会按 Day 段落分批发送，结果在本地合并。`
+输出格式只能是 JSON：{"tasks":[{"requirementId":"R001","title":"","details":""}]}。
 
-function scheduledTaskSource(source) {
-  const lines = source.split(/\r?\n/)
-  const sections = []
-  for (let index = 0; index < lines.length; index += 1) {
-    const heading = lines[index].match(/^(#{2,6})\s+(.+)$/)
-    if (!heading || !/^(?:Day\s*\d+\s*(?:[：:]|$)|第\s*\d+\s*天)/i.test(heading[2])) continue
-    const level = heading[1].length
-    let end = index + 1
-    while (end < lines.length) {
-      const nextHeading = lines[end].match(/^(#{1,6})\s+/)
-      if (nextHeading && nextHeading[1].length <= level) break
-      end += 1
-    }
-    sections.push(lines.slice(index, end).join('\n'))
-    index = end - 1
-  }
-  return sections.length ? sections.join('\n\n') : source
-}
+规则：
+1. 每项任务必须使用输入中已有的 requirementId；同一要求拆成多项时重复使用该 ID。不能遗漏 ID，也不能修改日期或把任务移动到其他天。
+2. 当一条 requirement 包含多个能够独立验收的动作时拆开；不可独立验收的上下文保留在 details 中。
+3. 不得遗漏输入要求，不得添加新要求，不估算专注时间。
+4. title 必须具体且可验收，details 简洁说明完成边界。`
 
-function markdownChunks(source, limit = 1800) {
-  const blocks = source.split(/(?=^#{2,6}\s+)/m).filter((block) => block.trim())
+const DEEPSEEK_PROMPT_VIEW = `第一阶段：统一计划书
+
+${DEEPSEEK_NORMALIZE_PROMPT}
+
+第二阶段：拆分每日任务
+
+${DEEPSEEK_SPLIT_PROMPT}
+
+第一阶段还会附加计划名称、导入日期、本地识别的日期提示和完整 Markdown。第二阶段按统一后的日期分批发送，结果在本地校验并合并。`
+
+function arrayChunks(items, limit = 2400) {
   const chunks = []
-  let current = ''
-  for (const block of blocks.length ? blocks : [source]) {
-    if (current && current.length + block.length > limit) {
+  let current = []
+  let length = 0
+  for (const item of items) {
+    const itemLength = JSON.stringify(item).length
+    if (current.length && length + itemLength > limit) {
       chunks.push(current)
-      current = ''
+      current = []
+      length = 0
     }
-    if (block.length <= limit) {
-      current += block
-      continue
-    }
-    const lines = block.split(/\r?\n/)
-    for (const line of lines) {
-      if (current && current.length + line.length + 1 > limit) {
-        chunks.push(current)
-        current = ''
-      }
-      current += `${line}\n`
-    }
+    current.push(item)
+    length += itemLength
   }
-  if (current.trim()) chunks.push(current)
+  if (current.length) chunks.push(current)
   return chunks
 }
 
-function addDaysToDateKey(value, count) {
-  const date = new Date(`${value}T12:00:00`)
-  date.setDate(date.getDate() + count)
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+function isDateKey(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return false
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12)
+  return date.getFullYear() === Number(match[1]) && date.getMonth() === Number(match[2]) - 1 && date.getDate() === Number(match[3])
+}
+
+function normalizedMarkdown(title, startDate, deadline, days) {
+  const lines = [`# ${title}：统一后的每日计划`, '', `计划周期：${startDate} 至 ${deadline}`]
+  for (const day of days) {
+    lines.push('', `## ${day.date} ${day.label}`.trim())
+    day.requirements.forEach((requirement) => lines.push(`- ${requirement.text}`))
+  }
+  return lines.join('\n')
 }
 
 function dataPath(name) {
@@ -189,70 +188,133 @@ ipcMain.handle('settings:save', async (_event, input) => {
   return { ok: true, hasApiKey: Boolean(next.encryptedApiKey), apiKeyHint: next.apiKeyHint }
 })
 
+async function requestDeepSeekJson({ apiKey, model, systemPrompt, userPrompt, label }) {
+  const response = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model,
+      temperature: 0.1,
+      max_tokens: 8192,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    }),
+  })
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(`DeepSeek ${label}请求失败 (${response.status})：${body.slice(0, 180)}`)
+  }
+  const result = await response.json()
+  const choice = result.choices?.[0]
+  const content = choice?.message?.content
+  if (!content) throw new Error(`DeepSeek ${label}未返回可用内容`)
+  if (choice.finish_reason === 'length') throw new Error(`DeepSeek ${label}输出达到长度上限，请重试`)
+  try {
+    const json = content.slice(content.indexOf('{'), content.lastIndexOf('}') + 1)
+    return JSON.parse(json)
+  } catch {
+    throw new Error(`DeepSeek ${label}返回了不完整的 JSON，请重试`)
+  }
+}
+
 ipcMain.handle('deepseek:split', async (_event, input) => {
   const settings = await readJson('settings.json', {})
   if (!settings.encryptedApiKey) throw new Error('请先在设置中保存 DeepSeek API Key')
 
   const apiKey = safeStorage.decryptString(Buffer.from(settings.encryptedApiKey, 'base64'))
-  const chunks = markdownChunks(scheduledTaskSource(input.source))
-  const tasks = []
+  const model = settings.model || 'deepseek-chat'
+  const rawPlan = await requestDeepSeekJson({
+    apiKey,
+    model,
+    systemPrompt: DEEPSEEK_NORMALIZE_PROMPT,
+    userPrompt: `计划名称：${input.title}\n导入日期：${input.importDate}\n本地日期提示：${input.planStartDate} 至 ${input.planDeadline}\n请以计划书语义为准，本地日期仅作参考。\nMarkdown 计划书：\n${input.source}`,
+    label: '统一计划书阶段',
+  })
+  if (!Array.isArray(rawPlan.days)) throw new Error('DeepSeek 统一计划书阶段返回的数据格式不正确')
 
+  const rawDays = rawPlan.days.map((day) => ({
+    date: String(day.date || ''),
+    label: String(day.label || '').trim(),
+    requirements: (Array.isArray(day.requirements) ? day.requirements : [])
+      .map((requirement) => typeof requirement === 'string'
+        ? requirement.trim()
+        : String(requirement?.text || requirement?.title || '').trim())
+      .filter(Boolean),
+  })).filter((day) => isDateKey(day.date) && day.requirements.length)
+  const daysByDate = new Map()
+  for (const day of rawDays) {
+    const current = daysByDate.get(day.date) || { date: day.date, label: day.label, requirements: [] }
+    if (!current.label && day.label) current.label = day.label
+    for (const requirement of day.requirements) {
+      if (!current.requirements.includes(requirement)) current.requirements.push(requirement)
+    }
+    daysByDate.set(day.date, current)
+  }
+  let requirementIndex = 0
+  const days = [...daysByDate.values()]
+    .sort((first, second) => first.date.localeCompare(second.date))
+    .map((day) => ({
+      ...day,
+      requirements: day.requirements.map((text) => ({ id: `R${String(++requirementIndex).padStart(3, '0')}`, text })),
+    }))
+  if (!days.length) throw new Error('DeepSeek 统一计划书后没有得到任何每日执行内容')
+
+  const firstTaskDate = days[0].date
+  const lastTaskDate = days.at(-1).date
+  const declaredStart = isDateKey(rawPlan.startDate) ? rawPlan.startDate : input.planStartDate
+  const declaredDeadline = isDateKey(rawPlan.deadline) ? rawPlan.deadline : input.planDeadline
+  const startDate = declaredStart < firstTaskDate ? declaredStart : firstTaskDate
+  const deadline = declaredDeadline > lastTaskDate ? declaredDeadline : lastTaskDate
+  if (deadline < startDate) throw new Error('DeepSeek 统一计划书后得到的计划周期无效')
+
+  const chunks = arrayChunks(days)
+  const rawTasks = []
   for (let index = 0; index < chunks.length; index += 1) {
-    const response = await fetch('https://api.deepseek.com/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: settings.model || 'deepseek-chat',
-        temperature: 0.1,
-        max_tokens: 8192,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: DEEPSEEK_SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: `计划名称：${input.title}\n导入日期：${input.importDate}\n计划开始日期：${input.planStartDate}\n计划截止日期：${input.planDeadline}\n当前片段：第 ${index + 1}/${chunks.length} 批\nMarkdown 计划片段：\n${chunks[index]}`,
-          },
-        ],
-      }),
+    const parsed = await requestDeepSeekJson({
+      apiKey,
+      model,
+      systemPrompt: DEEPSEEK_SPLIT_PROMPT,
+      userPrompt: `计划名称：${input.title}\n当前批次：第 ${index + 1}/${chunks.length} 批\n统一后的每日计划数据：\n${JSON.stringify(chunks[index], null, 2)}`,
+      label: `拆分任务第 ${index + 1}/${chunks.length} 批`,
     })
-
-    if (!response.ok) {
-      const body = await response.text()
-      throw new Error(`DeepSeek 第 ${index + 1}/${chunks.length} 批请求失败 (${response.status})：${body.slice(0, 180)}`)
-    }
-    const result = await response.json()
-    const choice = result.choices?.[0]
-    const content = choice?.message?.content
-    if (!content) throw new Error(`DeepSeek 第 ${index + 1}/${chunks.length} 批未返回可用内容`)
-    if (choice.finish_reason === 'length') {
-      throw new Error(`DeepSeek 第 ${index + 1}/${chunks.length} 批输出达到长度上限，请重试或改用本地模式`)
-    }
-
-    let parsed
-    try {
-      const json = content.slice(content.indexOf('{'), content.lastIndexOf('}') + 1)
-      parsed = JSON.parse(json)
-    } catch {
-      throw new Error(`DeepSeek 第 ${index + 1}/${chunks.length} 批返回了不完整的 JSON，请重试`)
-    }
-    if (!Array.isArray(parsed.tasks)) throw new Error(`DeepSeek 第 ${index + 1}/${chunks.length} 批返回的数据格式不正确`)
-    tasks.push(...parsed.tasks)
+    if (!Array.isArray(parsed.tasks)) throw new Error(`DeepSeek 拆分任务第 ${index + 1}/${chunks.length} 批返回的数据格式不正确`)
+    rawTasks.push(...parsed.tasks)
   }
 
-  const normalized = tasks.map((task) => ({
-    title: String(task.title || '').trim(),
-    details: String(task.details || task.title || '').trim(),
-    date: Number.isInteger(Number(task.day)) && Number(task.day) > 0
-      ? addDaysToDateKey(input.planStartDate, Number(task.day) - 1)
-      : /^\d{4}-\d{2}-\d{2}$/.test(task.date) ? task.date : input.planStartDate,
-  })).filter((task) => task.title)
+  const requirements = new Map(days.flatMap((day) => day.requirements.map((requirement) => [requirement.id, { ...requirement, date: day.date }])))
+  const coveredRequirements = new Set()
+  const tasks = rawTasks.map((task) => {
+    const requirementId = String(task.requirementId || '')
+    const requirement = requirements.get(requirementId)
+    if (!requirement) throw new Error(`DeepSeek 拆分任务时返回了未知要求编号：${requirementId || '空值'}`)
+    const title = String(task.title || '').trim()
+    if (!title) throw new Error(`DeepSeek 拆分任务时为要求 ${requirementId} 返回了空标题`)
+    coveredRequirements.add(requirementId)
+    return {
+      title,
+      details: String(task.details || task.title || requirement.text).trim(),
+      date: requirement.date,
+    }
+  })
+  const missingRequirements = [...requirements.keys()].filter((id) => !coveredRequirements.has(id))
+  if (missingRequirements.length) throw new Error(`DeepSeek 拆分任务时遗漏了 ${missingRequirements.length} 项计划要求，请重试`)
+
   const seen = new Set()
-  return normalized.filter((task) => {
-    const key = `${task.date}\n${task.title}`
+  const uniqueTasks = tasks.filter((task) => {
+    const key = `${task.date}\n${task.title}\n${task.details}`
     if (seen.has(key)) return false
     seen.add(key)
     return true
   })
+  return {
+    tasks: uniqueTasks,
+    startDate,
+    deadline,
+    normalizedPlan: normalizedMarkdown(input.title, startDate, deadline, days),
+  }
 })
 
 app.whenReady().then(() => {

@@ -46,16 +46,16 @@ function extractDates(value: string, referenceDate: string) {
 const extractDate = (value: string, referenceDate: string) => extractDates(value, referenceDate)[0]
 
 function dateCandidates(value: string, referenceDate: string) {
-  const candidates: Array<{ date: string; index: number }> = []
+  const candidates: Array<{ date: string; index: number; end: number }> = []
   const fullPattern = /(?:^|\D)(\d{4})\s*(?:[-/.]|年)\s*(\d{1,2})\s*(?:[-/.]|月)\s*(\d{1,2})\s*日?/g
   for (const match of value.matchAll(fullPattern)) {
     const date = validDateKey(Number(match[1]), Number(match[2]), Number(match[3]))
-    if (date) candidates.push({ date, index: match.index })
+    if (date) candidates.push({ date, index: match.index, end: match.index + match[0].length })
   }
   const shortPattern = /(?:^|\D)(\d{1,2})\s*月\s*(\d{1,2})\s*日?/g
   for (const match of value.matchAll(shortPattern)) {
     const date = validDateKey(parseDate(referenceDate).getFullYear(), Number(match[1]), Number(match[2]))
-    if (date) candidates.push({ date, index: match.index })
+    if (date) candidates.push({ date, index: match.index, end: match.index + match[0].length })
   }
   return candidates
 }
@@ -71,7 +71,13 @@ function labeledDate(source: string, labels: string, referenceDate: string) {
     const match = label.exec(line)
     if (!match) continue
     const candidates = dateCandidates(line, referenceDate)
-      .sort((first, second) => Math.abs(first.index - match.index) - Math.abs(second.index - match.index))
+      .sort((first, second) => {
+        const labelEnd = match.index + match[0].length
+        const distance = (candidate: { index: number; end: number }) => candidate.end <= match.index
+          ? match.index - candidate.end
+          : candidate.index >= labelEnd ? candidate.index - labelEnd : 0
+        return distance(first) - distance(second)
+      })
     if (candidates[0]) return candidates[0].date
   }
   return undefined
@@ -115,7 +121,7 @@ export function derivePlanSchedule(source: string, drafts: DraftTask[], importDa
   const allDates = [...sourceDates(source, importDate), ...datedTasks].sort()
   const startDate = explicitStart || importDate
   const latestDate = allDates.at(-1)
-  const deadline = explicitDeadline || (latestDate && latestDate >= startDate ? latestDate : startDate)
+  const deadline = [explicitDeadline, latestDate, startDate].filter((date): date is string => Boolean(date)).sort().at(-1) || startDate
   return { startDate, deadline: deadline < startDate ? startDate : deadline }
 }
 
