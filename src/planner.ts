@@ -45,6 +45,21 @@ function extractDates(value: string, referenceDate: string) {
 
 const extractDate = (value: string, referenceDate: string) => extractDates(value, referenceDate)[0]
 
+function dateCandidates(value: string, referenceDate: string) {
+  const candidates: Array<{ date: string; index: number }> = []
+  const fullPattern = /(?:^|\D)(\d{4})\s*(?:[-/.]|年)\s*(\d{1,2})\s*(?:[-/.]|月)\s*(\d{1,2})\s*日?/g
+  for (const match of value.matchAll(fullPattern)) {
+    const date = validDateKey(Number(match[1]), Number(match[2]), Number(match[3]))
+    if (date) candidates.push({ date, index: match.index })
+  }
+  const shortPattern = /(?:^|\D)(\d{1,2})\s*月\s*(\d{1,2})\s*日?/g
+  for (const match of value.matchAll(shortPattern)) {
+    const date = validDateKey(parseDate(referenceDate).getFullYear(), Number(match[1]), Number(match[2]))
+    if (date) candidates.push({ date, index: match.index })
+  }
+  return candidates
+}
+
 function sourceDates(source: string, referenceDate: string) {
   return source.split(/\r?\n/).flatMap((line) => extractDates(line, referenceDate))
 }
@@ -55,8 +70,9 @@ function labeledDate(source: string, labels: string, referenceDate: string) {
   for (const line of lines) {
     const match = label.exec(line)
     if (!match) continue
-    const date = extractDate(line.slice(match.index + match[0].length), referenceDate)
-    if (date) return date
+    const candidates = dateCandidates(line, referenceDate)
+      .sort((first, second) => Math.abs(first.index - match.index) - Math.abs(second.index - match.index))
+    if (candidates[0]) return candidates[0].date
   }
   return undefined
 }
@@ -94,7 +110,7 @@ export function splitLocally(source: string): DraftTask[] {
 
 export function derivePlanSchedule(source: string, drafts: DraftTask[], importDate = todayKey()) {
   const explicitStart = labeledDate(source, '开始|起始|启动', importDate)
-  const explicitDeadline = labeledDate(source, '截止|结束|目标', importDate)
+  const explicitDeadline = labeledDate(source, '截止|结束|目标|完成', importDate)
   const datedTasks = drafts.map((task) => task.date).filter(isDateKey)
   const allDates = [...sourceDates(source, importDate), ...datedTasks].sort()
   const startDate = explicitStart || importDate
@@ -135,23 +151,53 @@ export function scheduleDrafts(drafts: DraftTask[], plan: LearningPlan): Learnin
   })
 }
 
-export function reschedulePending(tasks: LearningTask[], plans: LearningPlan[], advanceNext = false) {
+export function reschedulePending(tasks: LearningTask[], plans: LearningPlan[]) {
   const today = todayKey()
-  const planIds = new Set(plans.map((plan) => plan.id))
-  const updated = tasks.map((task) => task.status === 'pending' && task.date < today && planIds.has(task.planId)
-    ? { ...task, date: today }
-    : { ...task })
+  const planById = new Map(plans.map((plan) => [plan.id, plan]))
+  return tasks.map((task) => {
+    const plan = planById.get(task.planId)
+    if (task.status !== 'pending' || !plan) return { ...task }
+    if (task.date < plan.startDate) return { ...task, date: plan.startDate }
+    if (task.date < today && plan.startDate <= today) return { ...task, date: today }
+    return { ...task }
+  })
+}
 
-  const hasPendingToday = updated.some((task) => task.status === 'pending' && task.date === today && planIds.has(task.planId))
-  if (!advanceNext || hasPendingToday) return updated
+export function updatePendingSchedule(tasks: LearningTask[], plans: LearningPlan[]) {
+  const today = todayKey()
+  const normalizedTasks = reschedulePending(tasks, plans)
+  if (normalizedTasks.some((task) => task.status === 'pending' && task.date === today)) {
+    return { tasks: normalizedTasks, plans }
+  }
 
-  const nextDate = updated
-    .filter((task) => task.status === 'pending' && task.date > today && planIds.has(task.planId))
+  const nextDate = normalizedTasks
+    .filter((task) => task.status === 'pending' && task.date > today)
     .map((task) => task.date)
     .sort()[0]
-  if (!nextDate) return updated
+  if (!nextDate) return { tasks: normalizedTasks, plans }
 
-  return updated.map((task) => task.status === 'pending' && task.date === nextDate && planIds.has(task.planId)
-    ? { ...task, date: today }
-    : task)
+  const nextPlanIds = new Set(normalizedTasks
+    .filter((task) => task.status === 'pending' && task.date === nextDate)
+    .map((task) => task.planId))
+  const futurePlans = plans.filter((plan) => nextPlanIds.has(plan.id) && plan.startDate > today)
+  const offsets = new Map(futurePlans.map((plan) => [
+    plan.id,
+    Math.round((parseDate(today).getTime() - parseDate(plan.startDate).getTime()) / 86_400_000),
+  ]))
+
+  const nextPlans = plans.map((plan) => {
+    const offset = offsets.get(plan.id)
+    if (offset === undefined) return plan
+    return {
+      ...plan,
+      startDate: today,
+      deadline: dateKey(addDays(parseDate(plan.deadline), offset)),
+    }
+  })
+  const nextTasks = normalizedTasks.map((task) => {
+    const offset = offsets.get(task.planId)
+    if (offset !== undefined) return { ...task, date: dateKey(addDays(parseDate(task.date), offset)) }
+    return task.status === 'pending' && task.date === nextDate ? { ...task, date: today } : task
+  })
+  return { tasks: nextTasks, plans: nextPlans }
 }

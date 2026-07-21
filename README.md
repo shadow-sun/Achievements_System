@@ -48,4 +48,6 @@ npm start
 
 打开左下角“DeepSeek 设置”，填写 API Key 和模型名。接口固定为官方 `https://api.deepseek.com/chat/completions`；已保存的 Key 会以脱敏形式显示。默认模型为 `deepseek-chat`，如果你的 V4 API 使用专属模型标识，请以服务商提供的名称替换。
 
+“DeepSeek 设置”中可以展开查看应用实际发送的系统提示词。包含 `Day N` 的长计划会按每日段落分批请求并在本地合并，避免单次输出过长造成 JSON 截断。
+
 任务与设置保存在 Electron 的 `userData` 目录，不会写入项目仓库。

@@ -6,7 +6,7 @@ import {
   Medal, Plus, RefreshCcw, Settings, Sparkles, Target, Trash2, Upload, X,
 } from 'lucide-react'
 import type { AppData, DeepSeekSettings, LearningPlan, LearningTask } from './types'
-import { derivePlanSchedule, formatShortDate, reschedulePending, scheduleDrafts, splitLocally, todayKey } from './planner'
+import { derivePlanSchedule, formatShortDate, reschedulePending, scheduleDrafts, splitLocally, todayKey, updatePendingSchedule } from './planner'
 
 const EMPTY_DATA: AppData = { plans: [], tasks: [], achievements: [] }
 
@@ -99,8 +99,8 @@ export default function App() {
   }
 
   const adaptSchedule = () => {
-    setData((current) => ({ ...current, tasks: reschedulePending(current.tasks, current.plans, true) }))
-    notify('已更新今日任务；全部完成时会载入下一批任务')
+    setData((current) => ({ ...current, ...updatePendingSchedule(current.tasks, current.plans) }))
+    notify('已更新今日任务；提前启动时会同步调整整个计划周期')
   }
 
   if (!ready) return <div className="loading-screen"><Sparkles size={24} />正在整理你的学习进度…</div>
@@ -225,14 +225,24 @@ function CreatePlanModal({ onClose, onCreated }: { onClose: () => void; onCreate
     setBusy(true); setError('')
     try {
       const importDate = todayKey()
+      const inferredSchedule = derivePlanSchedule(source, [], importDate)
       const drafts = useAi && window.achievements
-        ? await window.achievements.splitWithDeepSeek({ title, source, importDate })
+        ? await window.achievements.splitWithDeepSeek({
+          title,
+          source,
+          importDate,
+          planStartDate: inferredSchedule.startDate,
+          planDeadline: inferredSchedule.deadline,
+        })
         : splitLocally(source)
       if (!drafts.length) throw new Error('计划书中没有识别到任务，请使用 Markdown 列表编写任务项')
       const { startDate, deadline } = derivePlanSchedule(source, drafts, importDate)
       const plan: LearningPlan = { id: crypto.randomUUID(), title, source, startDate, deadline, createdAt: new Date().toISOString() }
       onCreated(plan, scheduleDrafts(drafts, plan))
-    } catch (cause) { setError(cause instanceof Error ? cause.message : '创建计划失败') }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : '创建计划失败'
+      setError(message.replace(/^Error invoking remote method '[^']+':\s*/, ''))
+    }
     finally { setBusy(false) }
   }
 
@@ -248,7 +258,7 @@ function CreatePlanModal({ onClose, onCreated }: { onClose: () => void; onCreate
 }
 
 function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [settings, setSettings] = useState<DeepSeekSettings>({ endpoint: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat', hasApiKey: false, apiKeyHint: '' })
+  const [settings, setSettings] = useState<DeepSeekSettings>({ endpoint: 'https://api.deepseek.com/chat/completions', model: 'deepseek-chat', hasApiKey: false, apiKeyHint: '', prompt: '' })
   const [apiKey, setApiKey] = useState('')
   const [error, setError] = useState('')
   useEffect(() => { if (window.achievements) void window.achievements.loadSettings().then(setSettings) }, [])
@@ -260,6 +270,7 @@ function SettingsModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
   return <div className="modal-backdrop"><div className="dialog settings-dialog"><div className="modal-head"><div><span className="eyebrow">DEEPSEEK AI</span><h2>智能拆分设置</h2></div><button className="icon-button" onClick={onClose}><X /></button></div><div className="form-body">
     <div className="provider-card"><BrainCircuit /><div><strong>DeepSeek API</strong><span>{settings.hasApiKey ? 'API Key 已通过系统安全存储保存' : '尚未配置 API Key'}</span></div><b className={settings.hasApiKey ? 'status-ok' : ''}>{settings.hasApiKey ? '已连接' : '待配置'}</b></div>
     <label>接口地址<input value={settings.endpoint} disabled /></label><label>模型名称<input value={settings.model} onChange={(event) => setSettings({ ...settings, model: event.target.value })} placeholder="deepseek-chat 或你的 V4 模型标识" /><small>默认使用 deepseek-chat；若 V4 API 提供了专属模型名，请填写服务商给出的标识。</small></label>
+    <details className="ai-prompt"><summary>查看发送给 DeepSeek 的提示词</summary><pre>{settings.prompt || '正在读取提示词…'}</pre></details>
     {settings.hasApiKey && <div className="current-api"><span>当前 API Key</span><strong>{settings.apiKeyHint || '已安全保存'}</strong></div>}
     <label>更新 API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={settings.hasApiKey ? '留空则保留当前 Key' : 'sk-...'} /></label>{error && <div className="form-error">{error}</div>}
   </div><div className="modal-actions"><button className="ghost-button" onClick={onClose}>取消</button><button className="primary-button" onClick={() => void save()}>安全保存</button></div></div></div>
